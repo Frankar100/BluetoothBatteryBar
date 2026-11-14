@@ -813,7 +813,7 @@ namespace BtBar
             using (RegistryKey k = Registry.CurrentUser.CreateSubKey(UninstallKey))
             {
                 k.SetValue("DisplayName", "Bluetooth Battery Bar");
-                k.SetValue("DisplayVersion", "1.0");
+                k.SetValue("DisplayVersion", "1.1");
                 k.SetValue("Publisher", "Frank");
                 k.SetValue("DisplayIcon", InstallExe);
                 k.SetValue("InstallLocation", InstallDir);
