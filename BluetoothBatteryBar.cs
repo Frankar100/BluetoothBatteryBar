@@ -346,6 +346,8 @@ namespace BtBar
 
         [DllImport("setupapi.dll", SetLastError = true)]
         static extern IntPtr SetupDiGetClassDevsW(ref Guid cls, IntPtr enumerator, IntPtr hwnd, uint flags);
+        [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "SetupDiGetClassDevsW")]
+        static extern IntPtr SetupDiGetClassDevsByEnumW(IntPtr cls, string enumerator, IntPtr hwnd, uint flags);
         [DllImport("setupapi.dll", SetLastError = true)]
         static extern bool SetupDiEnumDeviceInfo(IntPtr set, uint index, ref SP_DEVINFO_DATA data);
         [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -378,8 +380,23 @@ namespace BtBar
         public static List<Dev> Enumerate()
         {
             Dictionary<string, Dev> map = new Dictionary<string, Dev>();
-            IntPtr set = SetupDiGetClassDevsW(ref BluetoothClass, IntPtr.Zero, IntPtr.Zero, 2 /*DIGCF_PRESENT*/);
-            if (set == new IntPtr(-1)) return new List<Dev>();
+            Scan(SetupDiGetClassDevsW(ref BluetoothClass, IntPtr.Zero, IntPtr.Zero, 2 /*DIGCF_PRESENT*/), map);
+            // Los auriculares Bluetooth clásico (p. ej. Nothing Ear) publican la batería en su nodo
+            // "Hands-Free AG", que Windows pone en la clase System y no en la clase Bluetooth:
+            // hay que recorrer también todo el enumerador BTHENUM, sea cual sea la clase.
+            Scan(SetupDiGetClassDevsByEnumW(IntPtr.Zero, "BTHENUM", IntPtr.Zero, 6 /*DIGCF_PRESENT|DIGCF_ALLCLASSES*/), map);
+
+            List<Dev> list = new List<Dev>();
+            foreach (Dev dev in map.Values)
+                if (!string.IsNullOrEmpty(dev.Name)) list.Add(dev);
+            list.Sort(delegate(Dev a, Dev b) { return string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase); });
+            return list;
+        }
+
+        /// Recorre un conjunto de dispositivos y vuelca sus datos en el mapa por MAC. Libera el conjunto.
+        static void Scan(IntPtr set, Dictionary<string, Dev> map)
+        {
+            if (set == new IntPtr(-1)) return;
             try
             {
                 SP_DEVINFO_DATA d = new SP_DEVINFO_DATA();
@@ -395,6 +412,7 @@ namespace BtBar
                     string mac = m.Groups[1].Value;
                     Dev dev;
                     if (!map.TryGetValue(mac, out dev)) { dev = new Dev { Mac = mac }; map[mac] = dev; }
+                    if ((dev.Ids ?? "").Contains(id + "|")) continue;   // ya visto en la pasada anterior
                     dev.Ids += id + "|";
 
                     byte[] b = Prop(set, ref d, KeyBattery);
@@ -412,12 +430,6 @@ namespace BtBar
                 }
             }
             finally { SetupDiDestroyDeviceInfoList(set); }
-
-            List<Dev> list = new List<Dev>();
-            foreach (Dev dev in map.Values)
-                if (!string.IsNullOrEmpty(dev.Name)) list.Add(dev);
-            list.Sort(delegate(Dev a, Dev b) { return string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase); });
-            return list;
         }
 
         /// Glifo de "Segoe Fluent Icons" según el tipo de dispositivo.
